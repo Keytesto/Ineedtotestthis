@@ -1,85 +1,82 @@
-
 import hashlib
 import time
 import requests
-import urllib.parse
 import os
-from functools import wraps
 
-# ✅ Logging decorator for status messages
-def wrapper(func):
-    from functools import wraps
-    @wraps(func)
-    def inner(*args, **kwargs):
-        print(f"▶️ Starting: {func.__name__}")
-        result = func(*args, **kwargs)
-        print(f"✅ Finished: {func.__name__}")
-        return result
-    return inner
+# Set your AliExpress API credentials (should be set in Railway environment variables)
+APP_KEY = os.environ.get("APP_KEY", "").strip()
+APP_SECRET = os.environ.get("APP_SECRET", "").strip()
+TRACKING_ID = os.environ.get("TRACKING_ID", "").strip()
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip()
 
-# ✅ AliExpress API credentials (set via Railway environment variables)
-APP_KEY = os.environ.get("APP_KEY")
-APP_SECRET = os.environ.get("APP_SECRET")
-TRACKING_ID = os.environ.get("TRACKING_ID")
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID")
-
-# ✅ Signature generation
+# ✅ Corrected signature generation
 def generate_signature(params, app_secret):
     sorted_params = sorted(params.items())
     concatenated = ''.join(f"{k}{v}" for k, v in sorted_params)
-    to_sign = f"{app_secret}{concatenated}{app_secret}"
-    return hashlib.sha256(to_sign.encode("utf-8")).hexdigest().upper()
 
-# ✅ Send message or photo to Telegram
-@wrapper
+    # Debug logs for signature
+    print("Sorted Parameters:", sorted_params)
+    print("Concatenated String for Signature:", concatenated)
+
+    to_sign = f"{app_secret}{concatenated}{app_secret}"
+    print("String to Sign:", to_sign)  # Added for debugging
+
+    signature = hashlib.sha256(to_sign.encode("utf-8")).hexdigest().upper()
+    print("Generated Signature:", signature)  # Added for debugging
+
+    return signature
+
+# 📨 Telegram sender
 def send_to_telegram(message, image_url=None):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    data = {
+        "chat_id": TELEGRAM_CHANNEL_ID,
+        "text": message
+    }
     if image_url:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
         data = {
             "chat_id": TELEGRAM_CHANNEL_ID,
             "photo": image_url,
-            "caption": message,
-            "parse_mode": "Markdown"
+            "caption": message
         }
-    else:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        data = {
-            "chat_id": TELEGRAM_CHANNEL_ID,
-            "text": message,
-            "parse_mode": "Markdown"
-        }
-
     response = requests.post(url, data=data)
     if response.status_code != 200:
-        print("❌ Failed to send message:", response.text)
+        print("❌ Failed to send message:", response.json())
 
-# ✅ Fetch a hot product from AliExpress
-@wrapper
+# 🔍 Fetch product
 def fetch_product():
-    timestamp = int(time.time() * 1000)
+    timestamp = str(int(time.time() * 1000))
     method = "aliexpress.affiliate.hotproduct.query"
 
+    # All params must be strings
     params = {
         "app_key": APP_KEY,
         "method": method,
         "format": "json",
         "sign_method": "sha256",
-        "timestamp": str(timestamp),
+        "timestamp": timestamp,
         "v": "2.0",
         "tracking_id": TRACKING_ID,
         "fields": "product_id,product_title,product_main_image_url,product_detail_url,sale_price",
         "target_currency": "USD",
         "target_language": "EN",
-        "page_size": "1",
+        "page_size": "1"
     }
 
+    # Generate signature and add to params
     params["sign"] = generate_signature(params, APP_SECRET)
-    url = f"https://api-sg.aliexpress.com/sync?{urllib.parse.urlencode(params)}"
+
+    # Correct API endpoint (POST request)
+    url = "https://api-sg.aliexpress.com/open/api/param2/2/portals.open/aliexpress.affiliate.hotproduct.query"
+    print("Request URL:", url)
+
+    response = requests.post(url, data=params)
+    data = response.json()
+    print("📦 Full API Response:", data)
 
     try:
-        response = requests.get(url)
-        data = response.json()
         product = data["resp_result"]["result"]["products"][0]
         return {
             "title": product["product_title"],
@@ -91,16 +88,14 @@ def fetch_product():
         print(f"❌ Failed to fetch product: {e}")
         return None
 
-# ✅ Main runner function
-@wrapper
+# ▶️ Run the bot
 def run():
     product = fetch_product()
     if product:
-        message = f"🔥 *{product['title']}*\n💲 Price: ${product['price']}\n🔗 [View Product]({product['url']})"
+        message = f"Title: {product['title']}\nPrice: ${product['price']}\nURL: {product['url']}"
         send_to_telegram(message, product["image_url"])
     else:
-        print("⚠️ No product fetched.")
+        print("⚠️ No product to send.")
 
-# ✅ Entry point
 if __name__ == "__main__":
     run()
