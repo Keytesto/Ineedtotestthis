@@ -57,13 +57,13 @@ def fetch_product():
         "method": method,
         "format": "json",
         "sign_method": "sha256",
-        "timestamp": timestamp,
+        "timestamp": str(timestamp),  # ✅ Must be string
         "v": "2.0",
         "tracking_id": TRACKING_ID,
         "fields": "product_id,product_title,product_main_image_url,product_detail_url,sale_price",
         "target_currency": "USD",
         "target_language": "EN",
-        "page_size": 1,
+        "page_size": "1",  # ✅ Must be string
     }
 
     # Generate signature and append to parameters
