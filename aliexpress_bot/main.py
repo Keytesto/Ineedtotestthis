@@ -64,7 +64,7 @@ def fetch_product():
         "page_size": "1"
     }
 
-    # Ensure all values are strings (extra safety)
+    # Ensure all values are strings
     params = {k: str(v) for k, v in params.items()}
 
     # ✅ Generate and add signature
@@ -82,6 +82,7 @@ def fetch_product():
 
     try:
         data = response.json()
+        print("📦 Parsed JSON:", data)  # ✅ Added debug print
         product = data["resp_result"]["result"]["products"][0]
         return {
             "title": product["product_title"],
