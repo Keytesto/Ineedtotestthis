@@ -49,12 +49,14 @@ def send_to_telegram(message, image_url=None):
 # 🔍 Fetch a hot product from AliExpress
 def fetch_product():
     timestamp = int(time.time() * 1000)
+    method = "aliexpress.affiliate.hotproduct.query"
 
     # ✅ All values converted to string
     params = {
         "app_key": APP_KEY,
+        "method": method,
         "format": "json",
-        "sign_method": "SHA256",  # UPPERCASE (important)
+        "sign_method": "sha256",  # lowercase for legacy API
         "timestamp": str(timestamp),
         "v": "2.0",
         "tracking_id": TRACKING_ID,
@@ -70,10 +72,8 @@ def fetch_product():
     # ✅ Generate and add signature
     params["sign"] = generate_signature(params, APP_SECRET)
 
-    # ✅ Use new OpenAPI endpoint format (no `method` in query)
-    method_path = "aliexpress.affiliate.hotproduct.query"
-    url = f"https://gw.api.alibaba.com/openapi/param2/2/portals.open/{method_path}/{APP_KEY}?{urllib.parse.urlencode(params)}"
-
+    # ✅ Use legacy affiliate sync endpoint (which your app supports)
+    url = f"https://api.aliexpress.com/sync?{urllib.parse.urlencode(params)}"
     print("🌐 Final Request URL:", url)
 
     # Request AliExpress API
@@ -82,7 +82,7 @@ def fetch_product():
 
     try:
         data = response.json()
-        print("📦 Parsed JSON:", data)  # ✅ Added debug print
+        print("📦 Parsed JSON:", data)
         product = data["resp_result"]["result"]["products"][0]
         return {
             "title": product["product_title"],
