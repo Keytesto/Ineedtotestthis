@@ -13,8 +13,17 @@ TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID")  # Make sure to set 
 
 # Helper function to generate signature
 def generate_signature(params, app_secret):
+    # Sort parameters by name
     sorted_params = sorted(params.items())
+    
+    # Create the concatenated string for signature
     encoded_str = ''.join(f"{k}{v}" for k, v in sorted_params)
+    
+    # Debugging: Print parameters and the concatenated string for signature
+    print("Sorted Parameters:", sorted_params)
+    print("Concatenated String for Signature:", encoded_str)
+
+    # Generate the final signature (app_secret + encoded_str + app_secret)
     sign_str = f"{app_secret}{encoded_str}{app_secret}"
     return hashlib.sha256(sign_str.encode("utf-8")).hexdigest().upper()
 
@@ -66,6 +75,9 @@ def fetch_product():
     
     # Step 1: Generate signature
     params["sign"] = generate_signature(params, APP_SECRET)
+    
+    # Debugging: Print the full URL and parameters with the signature
+    print("Request URL:", f"https://api-sg.aliexpress.com/sync?{urllib.parse.urlencode(params)}")
     
     # Step 2: Build URL and make GET request
     url = f"https://api-sg.aliexpress.com/sync?{urllib.parse.urlencode(params)}"
