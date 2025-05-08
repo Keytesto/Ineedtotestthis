@@ -61,7 +61,8 @@ def fetch_product():
     params = {k: str(v) for k, v in params.items()}  # ✅ Ensure string values
     params["sign"] = generate_signature(params, APP_SECRET)
 
-    url = f"https://api-sg.aliexpress.com/sync?{urllib.parse.urlencode(params)}"
+    # ✅ Switched to official working endpoint
+    url = f"https://api.aliexpress.com/sync?{urllib.parse.urlencode(params)}"
     print("🌐 Final Request URL:", url)
 
     response = requests.get(url)
