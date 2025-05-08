@@ -11,20 +11,20 @@ TRACKING_ID = os.environ.get("TRACKING_ID")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID")
 
+# 🔍 Debug: Show raw env variables
+print("🔍 ENV DEBUG:")
+print("APP_KEY:", repr(APP_KEY))
+print("APP_SECRET:", repr(APP_SECRET))
+print("TRACKING_ID:", repr(TRACKING_ID))
+
 # ✅ Generate signature for API request
 def generate_signature(params, app_secret):
-    # Sort parameters by name
     sorted_params = sorted(params.items())
-
-    # Concatenate as key + value (no separators, no encoding)
     concatenated = ''.join(f"{k}{v}" for k, v in sorted_params)
-
-    print("Sorted Parameters:", sorted_params)
-    print("Concatenated String for Signature:", concatenated)
-
-    # Sign with SHA256 and wrap with secret
     to_sign = f"{app_secret}{concatenated}{app_secret}"
+    print("🔐 String to sign:", repr(to_sign))
     signature = hashlib.sha256(to_sign.encode("utf-8")).hexdigest().upper()
+    print("✅ Signature:", signature)
     return signature
 
 # 📨 Send message or image to Telegram
@@ -49,14 +49,12 @@ def send_to_telegram(message, image_url=None):
 # 🔍 Fetch a hot product from AliExpress
 def fetch_product():
     timestamp = int(time.time() * 1000)
-    method = "aliexpress.affiliate.hotproduct.query"
 
     # ✅ All values converted to string
     params = {
         "app_key": APP_KEY,
-        "method": method,
         "format": "json",
-        "sign_method": "sha256",
+        "sign_method": "SHA256",  # UPPERCASE (important)
         "timestamp": str(timestamp),
         "v": "2.0",
         "tracking_id": TRACKING_ID,
@@ -72,16 +70,18 @@ def fetch_product():
     # ✅ Generate and add signature
     params["sign"] = generate_signature(params, APP_SECRET)
 
-    # ✅ Use correct endpoint (api-sg works, but you can also try api.aliexpress.com)
-    url = f"https://api-sg.aliexpress.com/sync?{urllib.parse.urlencode(params)}"
-    print("Request URL:", url)
+    # ✅ Use new OpenAPI endpoint format (no `method` in query)
+    method_path = "aliexpress.affiliate.hotproduct.query"
+    url = f"https://gw.api.alibaba.com/openapi/param2/2/portals.open/{method_path}/{APP_KEY}?{urllib.parse.urlencode(params)}"
+
+    print("🌐 Final Request URL:", url)
 
     # Request AliExpress API
     response = requests.get(url)
-    data = response.json()
-    print("📦 Full API Response:", data)
+    print("📦 Raw Response:", response.text)
 
     try:
+        data = response.json()
         product = data["resp_result"]["result"]["products"][0]
         return {
             "title": product["product_title"],
