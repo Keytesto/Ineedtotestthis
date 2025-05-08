@@ -4,38 +4,38 @@ import requests
 import urllib.parse
 import os
 
-# Set your AliExpress API credentials (app_key, app_secret, and tracking_id)
-APP_KEY = os.environ.get("APP_KEY")  # Make sure to set this as a Railway variable
-APP_SECRET = os.environ.get("APP_SECRET")  # Make sure to set this as a Railway variable
-TRACKING_ID = os.environ.get("TRACKING_ID")  # Make sure to set this as a Railway variable
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")  # Make sure to set this as a Railway variable
-TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID")  # Make sure to set this as a Railway variable
+# Set your AliExpress API credentials (should be set in Railway environment variables)
+APP_KEY = os.environ.get("APP_KEY")
+APP_SECRET = os.environ.get("APP_SECRET")
+TRACKING_ID = os.environ.get("TRACKING_ID")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID")
 
-# Helper function to generate signature
+# ✅ Corrected signature generation
 def generate_signature(params, app_secret):
     # Sort parameters by name
     sorted_params = sorted(params.items())
-    
-    # Create the concatenated string for signature
-    encoded_str = ''.join(f"{k}{v}" for k, v in sorted_params)
-    
-    # Debugging: Print parameters and the concatenated string for signature
+
+    # Concatenate as key + value (no separators, no URL encoding)
+    concatenated = ''.join(f"{k}{v}" for k, v in sorted_params)
+
+    # Print for debugging
     print("Sorted Parameters:", sorted_params)
-    print("Concatenated String for Signature:", encoded_str)
+    print("Concatenated String for Signature:", concatenated)
 
-    # Generate the final signature (app_secret + encoded_str + app_secret)
-    sign_str = f"{app_secret}{encoded_str}{app_secret}"
-    return hashlib.sha256(sign_str.encode("utf-8")).hexdigest().upper()
+    # Wrap with secret and hash
+    to_sign = f"{app_secret}{concatenated}{app_secret}"
+    signature = hashlib.sha256(to_sign.encode("utf-8")).hexdigest().upper()
 
-# Function to send message to Telegram
+    return signature
+
+# 📨 Telegram sender
 def send_to_telegram(message, image_url=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    
     data = {
         "chat_id": TELEGRAM_CHANNEL_ID,
         "text": message
     }
-    
     if image_url:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
         data = {
@@ -43,22 +43,15 @@ def send_to_telegram(message, image_url=None):
             "photo": image_url,
             "caption": message
         }
-    
     response = requests.post(url, data=data)
     if response.status_code != 200:
         print("❌ Failed to send message:", response.json())
 
-# Function to fetch product from AliExpress API
+# 🔍 Fetch product
 def fetch_product():
-    """
-    Fetch hot product using AliExpress Advanced API.
-    """
-    # Get the current timestamp in milliseconds
     timestamp = int(time.time() * 1000)
-    
-    # Method and API parameters
     method = "aliexpress.affiliate.hotproduct.query"
-    
+
     params = {
         "app_key": APP_KEY,
         "method": method,
@@ -72,23 +65,20 @@ def fetch_product():
         "target_language": "EN",
         "page_size": 1,
     }
-    
-    # Step 1: Generate signature
+
+    # Generate signature and append to parameters
     params["sign"] = generate_signature(params, APP_SECRET)
-    
-    # Debugging: Print the full URL and parameters with the signature
-    print("Request URL:", f"https://api-sg.aliexpress.com/sync?{urllib.parse.urlencode(params)}")
-    
-    # Step 2: Build URL and make GET request
+
+    # Build full URL
     url = f"https://api-sg.aliexpress.com/sync?{urllib.parse.urlencode(params)}"
+    print("Request URL:", url)
+
+    # Call API
     response = requests.get(url)
     data = response.json()
-    
-    print("📦 Full API Response:", data)  # Print the full response to debug the output
+    print("📦 Full API Response:", data)
 
-    # Step 3: Extract product details
     try:
-        # Ensure that the API returns products and extract the relevant information
         product = data["resp_result"]["result"]["products"][0]
         return {
             "title": product["product_title"],
@@ -100,7 +90,7 @@ def fetch_product():
         print(f"❌ Failed to fetch product: {e}")
         return None
 
-# Main function to run the bot
+# ▶️ Run the bot
 def run():
     product = fetch_product()
     if product:
@@ -109,6 +99,5 @@ def run():
     else:
         print("⚠️ No product to send.")
 
-# Run the bot
 if __name__ == "__main__":
     run()
