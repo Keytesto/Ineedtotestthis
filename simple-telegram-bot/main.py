@@ -1,40 +1,67 @@
+import requests
 import time
 import os
-import requests
 
-# Get environment variables
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHANNEL = os.getenv("TELEGRAM_CHANNEL")  # Example: @mychannel
+# ==== 🔧 LOAD FROM ENV ====
+ALIEXPRESS_APP_KEY = os.getenv("ALIEXPRESS_APP_KEY")
+ALIEXPRESS_APP_SECRET = os.getenv("ALIEXPRESS_APP_SECRET")
+TRACKING_ID = os.getenv("TRACKING_ID")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHANNEL = os.getenv("TELEGRAM_CHANNEL")
+FETCH_INTERVAL_SECONDS = 3600  # 1 hour
 
-# Dummy product list
-dummy_products = [
-    {
-        "title": "Wireless Earbuds - Super Bass!",
-        "price": "$12.99",
-        "affiliate_link": "https://s.click.aliexpress.com/deep_link_dummy"
-    },
-    {
-        "title": "USB-C Fast Charging Cable",
-        "price": "$2.49",
-        "affiliate_link": "https://s.click.aliexpress.com/deep_link_dummy"
+# ==== 🔍 Fetch product from AliExpress ====
+def fetch_product():
+    url = "https://api-sg.aliexpress.com/sync"
+    params = {
+        "app_key": ALIEXPRESS_APP_KEY,
+        "method": "aliexpress.affiliate.product.query",
+        "sign_method": "sha256",
+        "timestamp": int(time.time() * 1000),
+        "page_size": 1,
+        "fields": "product_title,product_main_image_url,product_detail_url,sale_price,discount",
+        "target_currency": "USD",
+        "target_language": "EN",
+        "tracking_id": TRACKING_ID
     }
-]
 
-def post_to_telegram(product):
-    message = f"🔥 {product['title']}\n\nPrice: {product['price']}\n[Buy Now]({product['affiliate_link']})"
-    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    response = requests.get(url, params=params)
+    try:
+        product = response.json()['resp_result']['result']['products'][0]
+        return {
+            "title": product["product_title"],
+            "image": product["product_main_image_url"],
+            "url": product["product_detail_url"],
+            "price": product["sale_price"]
+        }
+    except Exception as e:
+        print("❌ Failed to fetch product:", e)
+        return None
+
+# ==== 🖼 Send image and caption to Telegram ====
+def send_to_telegram(product):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+    caption = f"<b>{product['title']}</b>\n\n💲Price: {product['price']}\n<a href='{product['url']}'>🔗 Buy Now</a>"
+
     payload = {
         "chat_id": TELEGRAM_CHANNEL,
-        "text": message,
-        "parse_mode": "Markdown"
+        "photo": product["image"],
+        "caption": caption,
+        "parse_mode": "HTML"
     }
-    response = requests.post(telegram_url, data=payload)
-    print("Sent to Telegram:", response.status_code, response.text)
 
+    response = requests.post(url, data=payload)
+    print("📤 Sent to Telegram:", response.text)
+
+# ==== 🔁 Main loop ====
 def main():
-    for product in dummy_products:
-        post_to_telegram(product)
-        time.sleep(2)  # Short pause between posts
+    while True:
+        product = fetch_product()
+        if product:
+            send_to_telegram(product)
+        else:
+            print("⚠️ No product to send.")
+        time.sleep(FETCH_INTERVAL_SECONDS)
 
 if __name__ == "__main__":
     main()
