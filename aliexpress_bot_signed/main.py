@@ -1,92 +1,99 @@
-
-import requests
-import time
-import os
 import hashlib
-import hmac
+import time
+import requests
 import urllib.parse
 
-# ==== 🔧 Load from Railway Environment Variables ====
-APP_KEY = os.getenv("ALIEXPRESS_APP_KEY")
-APP_SECRET = os.getenv("ALIEXPRESS_APP_SECRET")
-TRACKING_ID = os.getenv("TRACKING_ID")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_CHANNEL = os.getenv("TELEGRAM_CHANNEL")
-FETCH_INTERVAL_SECONDS = 3600  # Every 1 hour
+# === CONFIGURATION ===
+APP_KEY = "YOUR_APP_KEY"
+APP_SECRET = "YOUR_APP_SECRET"
+TRACKING_ID = "YOUR_TRACKING_ID"
+TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+TELEGRAM_CHANNEL = "YOUR_TELEGRAM_CHANNEL_ID"  # e.g. -1001234567890
 
-# ==== 🔐 Generate signature for AliExpress ====
+
 def generate_signature(params, app_secret):
+    """
+    Generate SHA256 signature for AliExpress Advanced API.
+    """
+    # Sort parameters alphabetically and prepare for signature
     sorted_params = sorted(params.items())
-    query_string = ''.join(f"{k}{v}" for k, v in sorted_params)
-    raw_string = app_secret + query_string + app_secret
-    hash_obj = hashlib.sha256()
-    hash_obj.update(raw_string.encode('utf-8'))
-    return hash_obj.hexdigest().upper()
+    encoded_str = ''.join(f"{k}{v}" for k, v in sorted_params)
+    
+    # Signature format: app_secret + encoded_str + app_secret
+    sign_str = f"{app_secret}{encoded_str}{app_secret}"
+    
+    # Return the hashed signature (SHA-256)
+    return hashlib.sha256(sign_str.encode("utf-8")).hexdigest().upper()
 
-# ==== 🛍️ Fetch a product ====
+
 def fetch_product():
-    method = "aliexpress.affiliate.product.query"
+    """
+    Fetch hot product using AliExpress Advanced API.
+    """
+    # Get the current timestamp in milliseconds
     timestamp = int(time.time() * 1000)
-
+    
+    # Method and API parameters
+    method = "aliexpress.affiliate.hotproduct.query"
+    
     params = {
         "app_key": APP_KEY,
         "method": method,
-        "timestamp": timestamp,
-        "sign_method": "sha256",
         "format": "json",
+        "sign_method": "sha256",
+        "timestamp": timestamp,
         "v": "2.0",
-        "page_size": 1,
-        "fields": "product_title,product_main_image_url,product_detail_url,sale_price,discount",
+        "tracking_id": TRACKING_ID,
+        "fields": "product_id,product_title,product_main_image_url,product_detail_url,sale_price",
         "target_currency": "USD",
         "target_language": "EN",
-        "tracking_id": TRACKING_ID
+        "page_size": 1,
     }
 
-    # Generate signature
-    sign = generate_signature(params, APP_SECRET)
-    params["sign"] = sign
+    # Step 1: Generate signature
+    params["sign"] = generate_signature(params, APP_SECRET)
+    
+    # Step 2: Build URL and make GET request
+    url = f"https://api-sg.aliexpress.com/sync?{urllib.parse.urlencode(params)}"
+    response = requests.get(url)
+    data = response.json()
+    
+    print("📦 AliExpress Response:", data)
 
-    url = "https://api-sg.aliexpress.com/sync"
-    response = requests.get(url, params=params)
-
+    # Step 3: Extract product details
     try:
-        data = response.json()
-        print("📦 AliExpress Response:", data)
-        product = data['resp_result']['result']['products'][0]
+        product = data["resp_result"]["result"]["products"][0]
         return {
             "title": product["product_title"],
-            "image": product["product_main_image_url"],
-            "url": product["product_detail_url"],
-            "price": product["sale_price"]
+            "image_url": product["product_main_image_url"],
+            "price": product["sale_price"],
+            "url": product["product_detail_url"]
         }
     except Exception as e:
-        print("❌ Failed to fetch product:", e)
+        print(f"❌ Failed to fetch product: {e}")
         return None
 
-# ==== 🖼 Send product to Telegram ====
-def send_to_telegram(product):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-    caption = f"<b>{product['title']}</b>\n\n💲Price: {product['price']}\n<a href='{product['url']}'>🔗 Buy Now</a>"
 
+def send_to_telegram(product):
+    """
+    Send product info to Telegram channel.
+    """
+    message = f"🔥 {product['title']}\n💰 Price: {product['price']}\n🔗 [View Product]({product['url']})"
+    
     payload = {
         "chat_id": TELEGRAM_CHANNEL,
-        "photo": product["image"],
-        "caption": caption,
-        "parse_mode": "HTML"
+        "caption": message,
+        "photo": product["image_url"],
+        "parse_mode": "Markdown"
     }
+    
+    resp = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto", data=payload)
+    print("📤 Telegram Response:", resp.text)
 
-    response = requests.post(url, data=payload)
-    print("📤 Sent to Telegram:", response.text)
-
-# ==== 🔁 Main Loop ====
-def main():
-    while True:
-        product = fetch_product()
-        if product:
-            send_to_telegram(product)
-        else:
-            print("⚠️ No product to send.")
-        time.sleep(FETCH_INTERVAL_SECONDS)
 
 if __name__ == "__main__":
-    main()
+    product = fetch_product()
+    if product:
+        send_to_telegram(product)
+    else:
+        print("⚠️ No product to send.")
