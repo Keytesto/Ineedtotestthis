@@ -2,30 +2,44 @@ import hashlib
 import time
 import requests
 import urllib.parse
+import os
 
-# === CONFIGURATION ===
-APP_KEY = "YOUR_APP_KEY"
-APP_SECRET = "YOUR_APP_SECRET"
-TRACKING_ID = "YOUR_TRACKING_ID"
-TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-TELEGRAM_CHANNEL = "YOUR_TELEGRAM_CHANNEL_ID"  # e.g. -1001234567890
+# Set your AliExpress API credentials (app_key, app_secret, and tracking_id)
+APP_KEY = os.environ.get("APP_KEY")  # Make sure to set this as a Railway variable
+APP_SECRET = os.environ.get("APP_SECRET")  # Make sure to set this as a Railway variable
+TRACKING_ID = os.environ.get("TRACKING_ID")  # Make sure to set this as a Railway variable
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")  # Make sure to set this as a Railway variable
+TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID")  # Make sure to set this as a Railway variable
 
-
+# Helper function to generate signature
 def generate_signature(params, app_secret):
-    """
-    Generate SHA256 signature for AliExpress Advanced API.
-    """
-    # Sort parameters alphabetically and prepare for signature
     sorted_params = sorted(params.items())
     encoded_str = ''.join(f"{k}{v}" for k, v in sorted_params)
-    
-    # Signature format: app_secret + encoded_str + app_secret
     sign_str = f"{app_secret}{encoded_str}{app_secret}"
-    
-    # Return the hashed signature (SHA-256)
     return hashlib.sha256(sign_str.encode("utf-8")).hexdigest().upper()
 
+# Function to send message to Telegram
+def send_to_telegram(message, image_url=None):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    
+    data = {
+        "chat_id": TELEGRAM_CHANNEL_ID,
+        "text": message
+    }
+    
+    if image_url:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+        data = {
+            "chat_id": TELEGRAM_CHANNEL_ID,
+            "photo": image_url,
+            "caption": message
+        }
+    
+    response = requests.post(url, data=data)
+    if response.status_code != 200:
+        print("❌ Failed to send message:", response.json())
 
+# Function to fetch product from AliExpress API
 def fetch_product():
     """
     Fetch hot product using AliExpress Advanced API.
@@ -49,7 +63,7 @@ def fetch_product():
         "target_language": "EN",
         "page_size": 1,
     }
-
+    
     # Step 1: Generate signature
     params["sign"] = generate_signature(params, APP_SECRET)
     
@@ -58,7 +72,7 @@ def fetch_product():
     response = requests.get(url)
     data = response.json()
     
-    print("📦 AliExpress Response:", data)
+    print("📦 Full API Response:", data)  # Print the full response
 
     # Step 3: Extract product details
     try:
@@ -73,27 +87,15 @@ def fetch_product():
         print(f"❌ Failed to fetch product: {e}")
         return None
 
-
-def send_to_telegram(product):
-    """
-    Send product info to Telegram channel.
-    """
-    message = f"🔥 {product['title']}\n💰 Price: {product['price']}\n🔗 [View Product]({product['url']})"
-    
-    payload = {
-        "chat_id": TELEGRAM_CHANNEL,
-        "caption": message,
-        "photo": product["image_url"],
-        "parse_mode": "Markdown"
-    }
-    
-    resp = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto", data=payload)
-    print("📤 Telegram Response:", resp.text)
-
-
-if __name__ == "__main__":
+# Main function to run the bot
+def run():
     product = fetch_product()
     if product:
-        send_to_telegram(product)
+        message = f"Title: {product['title']}\nPrice: ${product['price']}\nURL: {product['url']}"
+        send_to_telegram(message, product["image_url"])
     else:
         print("⚠️ No product to send.")
+
+# Run the bot
+if __name__ == "__main__":
+    run()
