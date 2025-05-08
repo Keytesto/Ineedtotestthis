@@ -72,10 +72,11 @@ def fetch_product():
     response = requests.get(url)
     data = response.json()
     
-    print("📦 Full API Response:", data)  # Print the full response
+    print("📦 Full API Response:", data)  # Print the full response to debug the output
 
     # Step 3: Extract product details
     try:
+        # Ensure that the API returns products and extract the relevant information
         product = data["resp_result"]["result"]["products"][0]
         return {
             "title": product["product_title"],
