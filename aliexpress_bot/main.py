@@ -39,9 +39,32 @@ def send_to_telegram(message, image_url=None):
     if response.status_code != 200:
         print("❌ Failed to send message:", response.json())
 
+# Make request with fallback logic
+def make_request(params, endpoints):
+    for endpoint in endpoints:
+        try:
+            url = f"{endpoint}?{urllib.parse.urlencode(params)}"
+            print(f"🌐 Trying endpoint: {url}")
+            response = requests.get(url)
+            content_type = response.headers.get("Content-Type", "")
+
+            # Check if response is JSON
+            if "application/json" in content_type:
+                print("📦 JSON response detected")
+                return response.json()
+
+            # Sometimes it *is* JSON but no content-type is set
+            try:
+                return response.json()
+            except Exception:
+                print("⚠️ Not JSON — trying next fallback...")
+        except Exception as e:
+            print(f"⚠️ Request to {endpoint} failed: {e}")
+    return None
+
 # Fetch product
 def fetch_product():
-    timestamp = str(int(time.time() * 1000))  # ✅ Use only str version
+    timestamp = str(int(time.time() * 1000))
 
     method = "aliexpress.affiliate.hotproduct.query"
     params = {
@@ -58,20 +81,24 @@ def fetch_product():
         "page_size": "1"
     }
 
-    params = {k: str(v) for k, v in params.items()}  # ✅ Ensure string values
+    params = {k: str(v) for k, v in params.items()}
     params["sign"] = generate_signature(params, APP_SECRET)
 
-    # ✅ Switched to official working endpoint
-    url = f"https://api.aliexpress.com/sync?{urllib.parse.urlencode(params)}"
-    print("🌐 Final Request URL:", url)
+    # Try both endpoints in order
+    endpoints = [
+        "https://api.aliexpress.com/sync",
+        "https://api-sg.aliexpress.com/sync"
+    ]
 
-    response = requests.get(url)
-    print("📦 Raw Response:", response.text)
+    data = make_request(params, endpoints)
+
+    if not data:
+        print("❌ No valid JSON response from any endpoint.")
+        return None
+
+    print("📦 Parsed JSON:", data)
 
     try:
-        data = response.json()
-        print("📦 Parsed JSON:", data)
-
         products = data["resp_result"]["result"]["products"]
         if not products:
             print("⚠️ No products found.")
@@ -85,7 +112,7 @@ def fetch_product():
             "url": product["product_detail_url"]
         }
     except Exception as e:
-        print(f"❌ Failed to fetch product: {e}")
+        print(f"❌ Failed to parse product: {e}")
         return None
 
 # Run bot
