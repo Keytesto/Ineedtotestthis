@@ -9,7 +9,6 @@ import os
 APP_KEY = os.environ.get("APP_KEY", "").strip()
 APP_SECRET = os.environ.get("APP_SECRET", "").strip()
 TRACKING_ID = os.environ.get("TRACKING_ID", "").strip()
-ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN", "").strip()
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip()
 
@@ -19,7 +18,7 @@ print("APP_KEY:", repr(APP_KEY))
 print("APP_SECRET:", repr(APP_SECRET))
 print("TRACKING_ID:", repr(TRACKING_ID))
 
-# ✅ Fixed Signature Generation with HMAC
+# ✅ Signature generation using HMAC-SHA256
 def generate_signature(params, app_secret):
     sorted_params = sorted(params.items())
     base_string = ''.join(f"{k}{v}" for k, v in sorted_params)
@@ -33,7 +32,7 @@ def generate_signature(params, app_secret):
     print("✅ Signature:", signature)
     return signature
 
-# Telegram sender
+# Send message or image to Telegram
 def send_to_telegram(message, image_url=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto" if image_url else f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     data = {
@@ -45,7 +44,7 @@ def send_to_telegram(message, image_url=None):
     if response.status_code != 200:
         print("❌ Failed to send message:", response.json())
 
-# Generic API requester with headers
+# Request wrapper with fallback and headers
 def make_request(params, endpoints):
     headers = {
         "User-Agent": "Mozilla/5.0",
@@ -71,11 +70,11 @@ def make_request(params, endpoints):
             print(f"⚠️ Request to {endpoint} failed: {e}")
     return None
 
-# Fetch product from AliExpress API
+# Fetch product using a method that likely doesn't require OAuth
 def fetch_product():
     timestamp = str(int(time.time() * 1000))
 
-    method = "aliexpress.affiliate.hotproduct.query"
+    method = "aliexpress.affiliate.featuredpromo.products.get"
     params = {
         "app_key": APP_KEY,
         "method": method,
@@ -90,17 +89,12 @@ def fetch_product():
         "page_size": "1"
     }
 
-    # Optional access_token if present
-    if ACCESS_TOKEN:
-        params["access_token"] = ACCESS_TOKEN
-
-    # All values must be strings
     params = {k: str(v) for k, v in params.items()}
     params["sign"] = generate_signature(params, APP_SECRET)
 
-    # ✅ Use correct endpoint
+    # Endpoint that still works for affiliate API without token
     endpoints = [
-        "https://api.aliexpress.com/open/api"
+        "https://api-sg.aliexpress.com/sync"
     ]
 
     data = make_request(params, endpoints)
@@ -128,7 +122,7 @@ def fetch_product():
         print(f"❌ Failed to parse product: {e}")
         return None
 
-# Main runner
+# Main entry point
 def run():
     product = fetch_product()
     if product:
