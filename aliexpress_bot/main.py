@@ -3,6 +3,7 @@ import hmac
 import time
 import requests
 import os
+import urllib.parse
 
 # Load credentials
 APP_KEY = os.environ.get("APP_KEY", "").strip()
@@ -11,14 +12,15 @@ TRACKING_ID = os.environ.get("TRACKING_ID", "").strip()
 
 # Signature generation
 def generate_signature(params, app_secret):
-    sorted_params = sorted(params.items())
-    base_string = ''.join(f"{k}{v}" for k, v in sorted_params)
-    string_to_sign = f"{app_secret}{base_string}{app_secret}"
+    sorted_params = sorted(params.items())  # Sort parameters by key
+    base_string = ''.join(f"{k}{v}" for k, v in sorted_params)  # Concatenate key and value
+    string_to_sign = f"{app_secret}{base_string}{app_secret}"  # Add the app secret at both ends
+    print("🔐 String to sign:", repr(string_to_sign))  # Debugging the string to sign
     signature = hmac.new(
         app_secret.encode("utf-8"),
         string_to_sign.encode("utf-8"),
         hashlib.sha256
-    ).hexdigest().upper()
+    ).hexdigest().upper()  # Create the signature using HMAC-SHA256
     return signature
 
 # Send the API request with minimal params to test
