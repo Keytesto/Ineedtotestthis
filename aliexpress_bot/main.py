@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import time
 import requests
 import urllib.parse
@@ -8,6 +9,7 @@ import os
 APP_KEY = os.environ.get("APP_KEY", "").strip()
 APP_SECRET = os.environ.get("APP_SECRET", "").strip()
 TRACKING_ID = os.environ.get("TRACKING_ID", "").strip()
+ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN", "").strip()
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHANNEL_ID = os.environ.get("TELEGRAM_CHANNEL_ID", "").strip()
 
@@ -17,13 +19,17 @@ print("APP_KEY:", repr(APP_KEY))
 print("APP_SECRET:", repr(APP_SECRET))
 print("TRACKING_ID:", repr(TRACKING_ID))
 
-# Signature generation
+# ✅ Fixed Signature Generation with HMAC
 def generate_signature(params, app_secret):
     sorted_params = sorted(params.items())
-    concatenated = ''.join(f"{k}{v}" for k, v in sorted_params)
-    to_sign = f"{app_secret}{concatenated}{app_secret}"
-    print("🔐 String to sign:", repr(to_sign))
-    signature = hashlib.sha256(to_sign.encode("utf-8")).hexdigest().upper()
+    base_string = ''.join(f"{k}{v}" for k, v in sorted_params)
+    string_to_sign = f"{app_secret}{base_string}{app_secret}"
+    print("🔐 String to sign:", repr(string_to_sign))
+    signature = hmac.new(
+        app_secret.encode("utf-8"),
+        string_to_sign.encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest().upper()
     print("✅ Signature:", signature)
     return signature
 
@@ -39,21 +45,24 @@ def send_to_telegram(message, image_url=None):
     if response.status_code != 200:
         print("❌ Failed to send message:", response.json())
 
-# Make request with fallback logic
+# Generic API requester with headers
 def make_request(params, endpoints):
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json"
+    }
+
     for endpoint in endpoints:
         try:
             url = f"{endpoint}?{urllib.parse.urlencode(params)}"
             print(f"🌐 Trying endpoint: {url}")
-            response = requests.get(url)
+            response = requests.get(url, headers=headers)
             content_type = response.headers.get("Content-Type", "")
 
-            # Check if response is JSON
             if "application/json" in content_type:
                 print("📦 JSON response detected")
                 return response.json()
 
-            # Sometimes it *is* JSON but no content-type is set
             try:
                 return response.json()
             except Exception:
@@ -62,7 +71,7 @@ def make_request(params, endpoints):
             print(f"⚠️ Request to {endpoint} failed: {e}")
     return None
 
-# Fetch product
+# Fetch product from AliExpress API
 def fetch_product():
     timestamp = str(int(time.time() * 1000))
 
@@ -81,13 +90,17 @@ def fetch_product():
         "page_size": "1"
     }
 
+    # Optional access_token if present
+    if ACCESS_TOKEN:
+        params["access_token"] = ACCESS_TOKEN
+
+    # All values must be strings
     params = {k: str(v) for k, v in params.items()}
     params["sign"] = generate_signature(params, APP_SECRET)
 
-    # Try both endpoints in order
+    # ✅ Use correct endpoint
     endpoints = [
-        "https://api.aliexpress.com/sync",
-        "https://api-sg.aliexpress.com/sync"
+        "https://api.aliexpress.com/open/api"
     ]
 
     data = make_request(params, endpoints)
@@ -115,7 +128,7 @@ def fetch_product():
         print(f"❌ Failed to parse product: {e}")
         return None
 
-# Run bot
+# Main runner
 def run():
     product = fetch_product()
     if product:
