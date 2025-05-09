@@ -18,15 +18,14 @@ print("APP_KEY:", repr(APP_KEY))
 print("APP_SECRET:", repr(APP_SECRET))
 print("TRACKING_ID:", repr(TRACKING_ID))
 
-# ✅ Signature generation using HMAC-SHA256
+# ✅ Correct HMAC-SHA256 signature for AliExpress API v2.0
 def generate_signature(params, app_secret):
     sorted_params = sorted(params.items())
     base_string = ''.join(f"{k}{v}" for k, v in sorted_params)
-    string_to_sign = f"{app_secret}{base_string}{app_secret}"
-    print("🔐 String to sign:", repr(string_to_sign))
+    print("🔐 String to sign:", repr(base_string))
     signature = hmac.new(
         app_secret.encode("utf-8"),
-        string_to_sign.encode("utf-8"),
+        base_string.encode("utf-8"),
         hashlib.sha256
     ).hexdigest().upper()
     print("✅ Signature:", signature)
@@ -34,17 +33,25 @@ def generate_signature(params, app_secret):
 
 # Send message or image to Telegram
 def send_to_telegram(message, image_url=None):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
+        print("⚠️ Telegram credentials not set.")
+        return
+
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto" if image_url else f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     data = {
         "chat_id": TELEGRAM_CHANNEL_ID,
-        "photo" if image_url else "text": image_url if image_url else message,
         "caption" if image_url else "text": message
     }
+    if image_url:
+        data["photo"] = image_url
+
     response = requests.post(url, data=data)
     if response.status_code != 200:
-        print("❌ Failed to send message:", response.json())
+        print("❌ Failed to send Telegram message:", response.text)
+    else:
+        print("📨 Sent to Telegram successfully!")
 
-# Request wrapper with fallback and headers
+# Make API request with fallback support
 def make_request(params, endpoints):
     headers = {
         "User-Agent": "Mozilla/5.0",
@@ -54,27 +61,23 @@ def make_request(params, endpoints):
     for endpoint in endpoints:
         try:
             url = f"{endpoint}?{urllib.parse.urlencode(params)}"
-            print(f"🌐 Trying endpoint: {url}")
+            print(f"🌐 Requesting: {url}")
             response = requests.get(url, headers=headers)
-            content_type = response.headers.get("Content-Type", "")
 
-            if "application/json" in content_type:
-                print("📦 JSON response detected")
+            if "application/json" in response.headers.get("Content-Type", ""):
                 return response.json()
+            else:
+                print("⚠️ Unexpected content type:", response.headers.get("Content-Type"))
 
-            try:
-                return response.json()
-            except Exception:
-                print("⚠️ Not JSON — trying next fallback...")
         except Exception as e:
-            print(f"⚠️ Request to {endpoint} failed: {e}")
+            print(f"⚠️ Error during request: {e}")
     return None
 
-# Fetch product using a method that likely doesn't require OAuth
+# Fetch one featured product
 def fetch_product():
     timestamp = str(int(time.time() * 1000))
-
     method = "aliexpress.affiliate.featuredpromo.products.get"
+
     params = {
         "app_key": APP_KEY,
         "method": method,
@@ -89,26 +92,23 @@ def fetch_product():
         "page_size": "1"
     }
 
+    # Clean string conversion and signing
     params = {k: str(v) for k, v in params.items()}
     params["sign"] = generate_signature(params, APP_SECRET)
 
-    # Endpoint that still works for affiliate API without token
-    endpoints = [
-        "https://api-sg.aliexpress.com/sync"
-    ]
-
+    endpoints = ["https://api-sg.aliexpress.com/sync"]
     data = make_request(params, endpoints)
 
     if not data:
-        print("❌ No valid JSON response from any endpoint.")
+        print("❌ No valid JSON response.")
         return None
 
-    print("📦 Parsed JSON:", data)
+    print("📦 Full API Response:", data)
 
     try:
         products = data["resp_result"]["result"]["products"]
         if not products:
-            print("⚠️ No products found.")
+            print("⚠️ No products returned.")
             return None
 
         product = products[0]
@@ -119,17 +119,17 @@ def fetch_product():
             "url": product["product_detail_url"]
         }
     except Exception as e:
-        print(f"❌ Failed to parse product: {e}")
+        print(f"❌ Failed to extract product: {e}")
         return None
 
 # Main entry point
 def run():
     product = fetch_product()
     if product:
-        message = f"Title: {product['title']}\nPrice: ${product['price']}\nURL: {product['url']}"
+        message = f"🔥 {product['title']}\n💰 Price: {product['price']}\n🔗 {product['url']}"
         send_to_telegram(message, product["image_url"])
     else:
-        print("⚠️ No product to send.")
+        print("⚠️ No product found to send.")
 
 if __name__ == "__main__":
     run()
